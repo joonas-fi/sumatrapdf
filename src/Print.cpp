@@ -106,6 +106,8 @@ static RectD BoundSelectionOnPage(const Vec<SelectionOnPage> &sel, int pageNo) {
     return bounds;
 }
 
+float postscriptPointInMm = 0.352777778; // = 1 postscript point in mm
+
 static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nullptr,
                           AbortCookieManager *abortCookie = nullptr) {
     AssertCrash(pd.engine);
@@ -146,6 +148,29 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
         return false;
     if (progressUI)
         progressUI->UpdateProgress(current, total);
+
+	DEVMODE* devMode = pd.devMode;
+
+	geomutil::SizeT<float> first_page_dimensions = engine.PageMediabox(1).Size().Convert<float>(); // [postscript points]
+
+	if (pd.advData.orientation_autodetect) {
+		devMode->dmOrientation = first_page_dimensions.dx < first_page_dimensions.dy ? DMORIENT_PORTRAIT : DMORIENT_LANDSCAPE;
+
+		devMode->dmFields = devMode->dmFields | DM_ORIENTATION;
+	}
+
+	if (pd.advData.size_autodetect) {
+		devMode->dmPaperSize = 0; // => paper size specified by dmPaperWidth & dmPaperLength 
+		devMode->dmPaperWidth = (short)(first_page_dimensions.dx * postscriptPointInMm * 10); // [mm*10]
+		devMode->dmPaperLength = (short)(first_page_dimensions.dy * postscriptPointInMm * 10); // [mm*10]
+
+		if (devMode->dmOrientation == DMORIENT_LANDSCAPE)
+		{
+			std::swap(devMode->dmPaperWidth, devMode->dmPaperLength);
+		}
+
+		devMode->dmFields |= DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH;
+	}
 
     // cf. http://blogs.msdn.com/b/oldnewthing/archive/2012/11/09/10367057.aspx
     ScopeHDC hdc(CreateDC(nullptr, pd.printerName, nullptr, pd.devMode));
@@ -705,6 +730,10 @@ static void ApplyPrintSettings(const WCHAR *settings, int pageCount, Vec<PRINTPA
             advanced.scale = PrintScaleShrink;
         else if (str::EqI(rangeList.At(i), L"fit"))
             advanced.scale = PrintScaleFit;
+		else if (str::EqI(rangeList.At(i), L"orientation_autodetect"))
+			advanced.orientation_autodetect = true;
+		else if (str::EqI(rangeList.At(i), L"size_autodetect"))
+			advanced.size_autodetect = true;
         else if (str::Parse(rangeList.At(i), L"%dx%$", &val) && 0 < val && val < 1000)
             devMode->dmCopies = (short)val;
         else if (str::EqI(rangeList.At(i), L"simplex"))

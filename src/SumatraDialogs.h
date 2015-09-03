@@ -19,10 +19,12 @@ enum PrintScaleAdv { PrintScaleNone = 0, PrintScaleShrink, PrintScaleFit };
 struct Print_Advanced_Data {
     PrintRangeAdv range;
     PrintScaleAdv scale;
+	bool orientation_autodetect;
+	bool size_autodetect;
 
     explicit Print_Advanced_Data(PrintRangeAdv range=PrintRangeAll,
                         PrintScaleAdv scale=PrintScaleShrink) :
-        range(range), scale(scale) { }
+        range(range), scale(scale), orientation_autodetect(false), size_autodetect(false) { }
 };
 
 HPROPSHEETPAGE CreatePrintAdvancedPropSheet(Print_Advanced_Data *data, ScopedMem<DLGTEMPLATE>& dlgTemplate);
