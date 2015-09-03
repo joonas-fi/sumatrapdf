@@ -156,7 +156,7 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
 	if (pd.advData.orientation_autodetect) {
 		devMode->dmOrientation = first_page_dimensions.dx < first_page_dimensions.dy ? DMORIENT_PORTRAIT : DMORIENT_LANDSCAPE;
 
-		devMode->dmFields = devMode->dmFields | DM_ORIENTATION;
+		devMode->dmFields |= DM_ORIENTATION;
 	}
 
 	if (pd.advData.size_autodetect) {
