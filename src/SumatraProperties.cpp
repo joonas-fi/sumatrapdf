@@ -205,7 +205,11 @@ static WCHAR *FormatFileSize(size_t size)
 
 PaperFormat GetPaperFormat(SizeD size)
 {
+	// support both landscape and portrait orientations
     SizeD sizeP = size.dx < size.dy ? size : SizeD(size.dy, size.dx);
+
+	// the following sizes are in inches
+
     // common ISO 216 formats (metric)
     if (limitValue(sizeP.dx, 8.26, 8.28) == sizeP.dx && limitValue(sizeP.dy, 11.68, 11.70) == sizeP.dy)
         return Paper_A4;
