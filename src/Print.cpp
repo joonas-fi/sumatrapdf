@@ -159,8 +159,9 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
 		devMode->dmFields |= DM_ORIENTATION;
 	}
 
-	if (pd.advData.size_autodetect) {
-		devMode->dmPaperSize = 0; // => paper size specified by dmPaperWidth & dmPaperLength 
+	if (pd.advData.size_autodetect && devMode->dmPaperSize != 0) {
+		// http://stackoverflow.com/questions/9115985/is-dmpapersize-dmpaper-user-the-same-as-dmpapersize-0
+		devMode->dmPaperSize = DMPAPER_USER; // or 0? // => paper size specified by dmPaperWidth & dmPaperLength 
 		devMode->dmPaperWidth = (short)(first_page_dimensions.dx * postscriptPointInMm * 10); // [mm*10]
 		devMode->dmPaperLength = (short)(first_page_dimensions.dy * postscriptPointInMm * 10); // [mm*10]
 
