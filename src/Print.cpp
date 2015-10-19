@@ -185,6 +185,23 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
     // Positive x is to the right; positive y is down.
     SetMapMode(hdc, MM_TEXT);
 
+	/* Caps for printers are as follows:
+	
+		PHYSICALWIDTH
+			For printing devices: the width of the physical page, in device units. For example, a printer set to print at 600 dpi on 8.5-x11-inch paper has a physical width value of 5100 device units.
+			Note that the physical page is almost always greater than the printable area of the page, and never smaller.
+		PHYSICALHEIGHT
+		PHYSICALOFFSETX
+			For printing devices: the distance from the left edge of the physical page to the left edge of the printable area, in device units.
+			For example, a printer set to print at 600 dpi on 8.5-by-11-inch paper, that cannot print on the leftmost 0.25-inch of paper, has a horizontal physical offset of 150 device units.
+		PHYSICALOFFSETY
+		HORZRES
+			Width, in pixels, of the screen; or for printers, the width, in pixels, of the printable area of the page.
+		VERTRES
+		LOGPIXELSX
+			Number of pixels per logical inch along the screen width. In a system with multiple display monitors, this value is the same for all monitors.
+		LOGPIXELSY
+	*/
     const SizeI paperSize(GetDeviceCaps(hdc, PHYSICALWIDTH), GetDeviceCaps(hdc, PHYSICALHEIGHT));
     const RectI printable(GetDeviceCaps(hdc, PHYSICALOFFSETX), GetDeviceCaps(hdc, PHYSICALOFFSETY),
                           GetDeviceCaps(hdc, HORZRES), GetDeviceCaps(hdc, VERTRES));
