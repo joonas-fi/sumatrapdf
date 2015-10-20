@@ -29,6 +29,12 @@
 #include "SumatraProperties.h"
 #include "Translations.h"
 
+#include <iostream>
+
+void logToStdErr(char* message) {
+	std::cerr << message << std::endl;
+}
+
 struct PrintData {
     ScopedMem<WCHAR> printerName;
     ScopedMem<DEVMODE> devMode;
@@ -110,6 +116,8 @@ float postscriptPointInMm = 0.352777778; // = 1 postscript point in mm
 
 static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nullptr,
                           AbortCookieManager *abortCookie = nullptr) {
+	char debugStr[512];
+
     AssertCrash(pd.engine);
     if (!pd.engine)
         return false;
@@ -153,10 +161,16 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
 
 	geomutil::SizeT<float> first_page_dimensions = engine.PageMediabox(1).Size().Convert<float>(); // [postscript points]
 
+	sprintf(debugStr, "Initial dmOrientation = %s", devMode->dmOrientation == DMORIENT_PORTRAIT ? "PORTRAIT" : "LANDSCAPE");
+	logToStdErr(debugStr);
+
 	if (pd.advData.orientation_autodetect) {
 		devMode->dmOrientation = first_page_dimensions.dx < first_page_dimensions.dy ? DMORIENT_PORTRAIT : DMORIENT_LANDSCAPE;
 
 		devMode->dmFields |= DM_ORIENTATION;
+
+		sprintf(debugStr, "Autodetected dmOrientation = %s", devMode->dmOrientation == DMORIENT_PORTRAIT ? "PORTRAIT" : "LANDSCAPE");
+		logToStdErr(debugStr);
 	}
 
 	if (pd.advData.size_autodetect && devMode->dmPaperSize == 0) {
@@ -168,9 +182,14 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
 		if (devMode->dmOrientation == DMORIENT_LANDSCAPE)
 		{
 			std::swap(devMode->dmPaperWidth, devMode->dmPaperLength);
+
+			logToStdErr("Swapped dmPaperWidth and dmPaperLength because DMORIENT_LANDSCAPE");
 		}
 
 		devMode->dmFields |= DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH;
+
+		sprintf(debugStr, "Auto-detected dmPaperSize = %i dmPaperWidth = %i dmPaperLength = %i", devMode->dmPaperSize, devMode->dmPaperWidth, devMode->dmPaperLength);
+		logToStdErr(debugStr);
 	}
 
     // cf. http://blogs.msdn.com/b/oldnewthing/archive/2012/11/09/10367057.aspx
@@ -210,6 +229,28 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
     bool bPrintPortrait = paperSize.dx < paperSize.dy;
     if (pd.devMode && (pd.devMode.Get()->dmFields & DM_ORIENTATION))
         bPrintPortrait = DMORIENT_PORTRAIT == pd.devMode.Get()->dmOrientation;
+
+	sprintf(debugStr, "Before print: bPrintPortrait = %s has_dmOrientation = %s dmOrientation = %s paperSize = (%i, %i) printable = (%i, %i, %i, %i) logicalPixels = (%i, %i) dpi = %f DC_ORIENTATION = %i",
+		bPrintPortrait ? "true" : "false",
+		devMode->dmFields & DM_ORIENTATION ? "true" : "false",
+		devMode->dmOrientation == DMORIENT_PORTRAIT ? "PORTRAIT" : "LANDSCAPE",
+
+		paperSize.dx,
+		paperSize.dy,
+
+		printable.dx,
+		printable.dy,
+		printable.x,
+		printable.y,
+
+		GetDeviceCaps(hdc, LOGPIXELSX),
+		GetDeviceCaps(hdc, LOGPIXELSY),
+
+		engine.GetFileDPI(),
+
+		GetDeviceCaps(hdc, DC_ORIENTATION)
+	);
+	logToStdErr(debugStr);
 
     if (pd.sel.Count() > 0) {
         for (int pageNo = 1; pageNo <= engine.PageCount(); pageNo++) {
@@ -343,6 +384,16 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
                 else if (onPaper.BR().y > printable.BR().y)
                     offset.y -= (int)(onPaper.BR().y - printable.BR().y);
             }
+
+			sprintf(debugStr, "Printing; page = %i rotation = %i pSize = (%f, %f) offset = (%i, %i)",
+				pageNo,
+				rotation,
+				pSize.dx,
+				pSize.dy,
+				offset.x,
+				offset.y
+			);
+			logToStdErr(debugStr);
 
             bool ok = false;
             short shrink = 1;
@@ -853,11 +904,18 @@ bool PrintFile(BaseEngine *engine, WCHAR *printerName, bool displayErrors, const
     // (will be overridden by any paper= value in -print-settings)
     devMode->dmPaperSize = GetPaperSize(engine);
 
+	char debugStr[64];
+	sprintf(debugStr, "Initial dmPaperSize = %i", devMode->dmPaperSize);
+	logToStdErr(debugStr);
+
     {
         Print_Advanced_Data advanced;
         Vec<PRINTPAGERANGE> ranges;
 
         ApplyPrintSettings(settings, engine->PageCount(), ranges, advanced, devMode);
+
+		sprintf(debugStr, "After command-line overrides dmPaperSize = %i", devMode->dmPaperSize);
+		logToStdErr(debugStr);
 
         PrintData pd(engine, infoData, devMode, ranges, advanced);
         ok = PrintToDevice(pd);
