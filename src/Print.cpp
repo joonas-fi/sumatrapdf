@@ -147,7 +147,31 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
     if (progressUI)
         progressUI->UpdateProgress(current, total);
 
-    // cf. http://blogs.msdn.com/b/oldnewthing/archive/2012/11/09/10367057.aspx
+	// with labelprintingForcePortrait we force portrait and specify paper size always as custom size and
+	// specify paper's width and length in portrait or landscape depending on the document type (as opposed
+	// to paper size always as portrait and depending on dmOrientation we rotate printing or not).
+	// 
+	// this is to work around buggy print drivers. there seems to be no consistency on how drivers work with
+	//custom page sizes and landscape orientation. possibly because MSDN documentation is full of weasel words.
+	if (pd.advData.labelprintingForcePortrait) {
+		DEVMODE* devMode = pd.devMode.Get();
+
+		devMode->dmFields |= DM_ORIENTATION;
+		devMode->dmOrientation = DMORIENT_PORTRAIT; // ALWAYS PORTRAIT!!
+
+		RectD firstPageMediaBox = engine.PageMediabox(1); // [postscript points]
+
+		const double postscriptPointToMillimeter = 0.352777778;
+
+		// always use user-defined page size
+		// TODO: with A4 + portrait maybe just use DMPAPER_A4 so buggy drivers with no support for DMPAPER_USER will not get offended
+		devMode->dmFields |= (DM_PAPERSIZE | DM_PAPERWIDTH | DM_PAPERLENGTH);
+		devMode->dmPaperSize = DMPAPER_USER;
+		devMode->dmPaperWidth = (short)std::round(firstPageMediaBox.dx * postscriptPointToMillimeter) * 10; // [tenths of a millimeter]
+		devMode->dmPaperLength = (short)std::round(firstPageMediaBox.dy * postscriptPointToMillimeter) * 10;
+	}
+
+	// cf. http://blogs.msdn.com/b/oldnewthing/archive/2012/11/09/10367057.aspx
     ScopeHDC hdc(CreateDC(nullptr, pd.printerName, nullptr, pd.devMode));
     if (!hdc)
         return false;
@@ -246,18 +270,22 @@ static bool PrintToDevice(const PrintData &pd, ProgressUpdateUI *progressUI = nu
 
             geomutil::SizeT<float> pSize = engine.PageMediabox(pageNo).Size().Convert<float>();
             int rotation = 0;
-            // Turn the document by 90 deg if it isn't in portrait mode
-            if (pSize.dx > pSize.dy) {
-                rotation += 90;
-                std::swap(pSize.dx, pSize.dy);
-            }
-            // make sure not to print upside-down
-            rotation = (rotation % 180) == 0 ? 0 : 270;
-            // finally turn the page by (another) 90 deg in landscape mode
-            if (!bPrintPortrait) {
-                rotation = (rotation + 90) % 360;
-                std::swap(pSize.dx, pSize.dy);
-            }
+
+			// with labelprintingForcePortrait we never rotate 
+			if (!pd.advData.labelprintingForcePortrait) {
+				// Turn the document by 90 deg if it isn't in portrait mode
+				if (pSize.dx > pSize.dy) {
+					rotation += 90;
+					std::swap(pSize.dx, pSize.dy);
+				}
+				// make sure not to print upside-down
+				rotation = (rotation % 180) == 0 ? 0 : 270;
+				// finally turn the page by (another) 90 deg in landscape mode
+				if (!bPrintPortrait) {
+					rotation = (rotation + 90) % 360;
+					std::swap(pSize.dx, pSize.dy);
+				}
+			}
 
             // dpiFactor means no physical zoom
             float zoom = dpiFactor;
@@ -699,35 +727,39 @@ static void ApplyPrintSettings(const WCHAR *settings, int pageCount, Vec<PRINTPA
     for (size_t i = 0; i < rangeList.Count(); i++) {
         int val;
         PRINTPAGERANGE pr;
-        if (str::Parse(rangeList.At(i), L"%d-%d%$", &pr.nFromPage, &pr.nToPage)) {
-            pr.nFromPage = limitValue(pr.nFromPage, (DWORD)1, (DWORD)pageCount);
-            pr.nToPage = limitValue(pr.nToPage, (DWORD)1, (DWORD)pageCount);
-            ranges.Append(pr);
-        } else if (str::Parse(rangeList.At(i), L"%d%$", &pr.nFromPage)) {
-            pr.nFromPage = pr.nToPage = limitValue(pr.nFromPage, (DWORD)1, (DWORD)pageCount);
-            ranges.Append(pr);
-        } else if (str::EqI(rangeList.At(i), L"even"))
-            advanced.range = PrintRangeEven;
-        else if (str::EqI(rangeList.At(i), L"odd"))
-            advanced.range = PrintRangeOdd;
-        else if (str::EqI(rangeList.At(i), L"noscale"))
-            advanced.scale = PrintScaleNone;
-        else if (str::EqI(rangeList.At(i), L"shrink"))
-            advanced.scale = PrintScaleShrink;
-        else if (str::EqI(rangeList.At(i), L"fit"))
-            advanced.scale = PrintScaleFit;
-        else if (str::Parse(rangeList.At(i), L"%dx%$", &val) && 0 < val && val < 1000)
-            devMode->dmCopies = (short)val;
-        else if (str::EqI(rangeList.At(i), L"simplex"))
-            devMode->dmDuplex = DMDUP_SIMPLEX;
-        else if (str::EqI(rangeList.At(i), L"duplex") || str::EqI(rangeList.At(i), L"duplexlong"))
-            devMode->dmDuplex = DMDUP_VERTICAL;
-        else if (str::EqI(rangeList.At(i), L"duplexshort"))
-            devMode->dmDuplex = DMDUP_HORIZONTAL;
-        else if (str::EqI(rangeList.At(i), L"color"))
-            devMode->dmColor = DMCOLOR_COLOR;
-        else if (str::EqI(rangeList.At(i), L"monochrome"))
-            devMode->dmColor = DMCOLOR_MONOCHROME;
+		if (str::Parse(rangeList.At(i), L"%d-%d%$", &pr.nFromPage, &pr.nToPage)) {
+			pr.nFromPage = limitValue(pr.nFromPage, (DWORD)1, (DWORD)pageCount);
+			pr.nToPage = limitValue(pr.nToPage, (DWORD)1, (DWORD)pageCount);
+			ranges.Append(pr);
+		}
+		else if (str::Parse(rangeList.At(i), L"%d%$", &pr.nFromPage)) {
+			pr.nFromPage = pr.nToPage = limitValue(pr.nFromPage, (DWORD)1, (DWORD)pageCount);
+			ranges.Append(pr);
+		}
+		else if (str::EqI(rangeList.At(i), L"even"))
+			advanced.range = PrintRangeEven;
+		else if (str::EqI(rangeList.At(i), L"odd"))
+			advanced.range = PrintRangeOdd;
+		else if (str::EqI(rangeList.At(i), L"noscale"))
+			advanced.scale = PrintScaleNone;
+		else if (str::EqI(rangeList.At(i), L"shrink"))
+			advanced.scale = PrintScaleShrink;
+		else if (str::EqI(rangeList.At(i), L"fit"))
+			advanced.scale = PrintScaleFit;
+		else if (str::Parse(rangeList.At(i), L"%dx%$", &val) && 0 < val && val < 1000)
+			devMode->dmCopies = (short)val;
+		else if (str::EqI(rangeList.At(i), L"simplex"))
+			devMode->dmDuplex = DMDUP_SIMPLEX;
+		else if (str::EqI(rangeList.At(i), L"duplex") || str::EqI(rangeList.At(i), L"duplexlong"))
+			devMode->dmDuplex = DMDUP_VERTICAL;
+		else if (str::EqI(rangeList.At(i), L"duplexshort"))
+			devMode->dmDuplex = DMDUP_HORIZONTAL;
+		else if (str::EqI(rangeList.At(i), L"color"))
+			devMode->dmColor = DMCOLOR_COLOR;
+		else if (str::EqI(rangeList.At(i), L"monochrome"))
+			devMode->dmColor = DMCOLOR_MONOCHROME;
+		else if (str::EqI(rangeList.At(i), L"labelprinting-force-portrait"))
+			advanced.labelprintingForcePortrait = true;
         else if (str::StartsWithI(rangeList.At(i), L"bin="))
             devMode->dmDefaultSource = GetPaperSourceByName(rangeList.At(i) + 4, devMode);
         else if (str::StartsWithI(rangeList.At(i), L"paper="))

@@ -19,10 +19,11 @@ enum PrintScaleAdv { PrintScaleNone = 0, PrintScaleShrink, PrintScaleFit };
 struct Print_Advanced_Data {
     PrintRangeAdv range;
     PrintScaleAdv scale;
+	bool labelprintingForcePortrait;
 
     explicit Print_Advanced_Data(PrintRangeAdv range=PrintRangeAll,
                         PrintScaleAdv scale=PrintScaleShrink) :
-        range(range), scale(scale) { }
+        range(range), scale(scale), labelprintingForcePortrait(false) { }
 };
 
 HPROPSHEETPAGE CreatePrintAdvancedPropSheet(Print_Advanced_Data *data, ScopedMem<DLGTEMPLATE>& dlgTemplate);
